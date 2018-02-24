@@ -94,6 +94,8 @@ func NewPinger(addr string) (*Pinger, error) {
 		network: "udp",
 		ipv4:    ipv4,
 		size:    timeSliceLength,
+		id:   rand.Intn(65535),
+
 
 		done: make(chan bool),
 	}, nil
@@ -131,6 +133,9 @@ type Pinger struct {
 	// OnFinish is called when Pinger exits
 	OnFinish func(*Statistics)
 
+	// Capture user interruption
+	TrapInterrupt bool
+
 	// stop chan bool
 	done chan bool
 
@@ -142,6 +147,7 @@ type Pinger struct {
 	size     int
 	sequence int
 	network  string
+	id int
 }
 
 type packet struct {
@@ -287,8 +293,10 @@ func (p *Pinger) run() {
 	timeout := time.NewTicker(p.Timeout)
 	interval := time.NewTicker(p.Interval)
 	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	signal.Notify(c, syscall.SIGTERM)
+	if p.TrapInterrupt {
+	        signal.Notify(c, os.Interrupt)
+	        signal.Notify(c, syscall.SIGTERM)
+	}
 
 	for {
 		select {
@@ -434,6 +442,9 @@ func (p *Pinger) processPacket(recv *packet) error {
 
 	switch pkt := m.Body.(type) {
 	case *icmp.Echo:
+	     if pkt.ID != p.id {
+	     	return nil // not an echo reply to our echo request
+	     }
 		outPkt.Rtt = time.Since(bytesToTime(pkt.Data[:timeSliceLength]))
 		outPkt.Seq = pkt.Seq
 		p.PacketsRecv += 1
@@ -472,7 +483,7 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 	bytes, err := (&icmp.Message{
 		Type: typ, Code: 0,
 		Body: &icmp.Echo{
-			ID:   rand.Intn(65535),
+			ID:   p.id,
 			Seq:  p.sequence,
 			Data: t,
 		},
