@@ -205,6 +205,11 @@ type Statistics struct {
 	StdDevRtt time.Duration
 }
 
+// Done tells Pinger to finish.
+func (p *Pinger) Done() {
+     close(p.done)
+}
+
 // SetIPAddr sets the ip address of the target host.
 func (p *Pinger) SetIPAddr(ipaddr *net.IPAddr) {
 	var ipv4 bool
